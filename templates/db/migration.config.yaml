@@ -1,0 +1,11 @@
+{{- if .Values.db.enabled -}}
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  namespace: {{  .Release.Namespace }}
+  name: {{ include "supabase.db.fullname" . }}-migrations
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+data:
+  {{- toYaml .Values.db.config | nindent 2 }}
+{{- end }}

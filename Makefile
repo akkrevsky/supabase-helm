@@ -1,0 +1,2 @@
+helm-packedge:
+	helm package .
