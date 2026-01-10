@@ -1,2 +1,2 @@
-helm-packedge:
+helm-package:
 	helm package .
