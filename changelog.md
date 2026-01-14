@@ -1,3 +1,11 @@
+## 1.0.21
+
+Improved postgres user creation in postStart hook:
+  - Changed connection logic to try both postgres user and peer authentication (without user)
+  - Database readiness check now tries both connection methods
+  - This ensures postStart hook can connect even if postgres user doesn't exist yet
+  - Fixes infinite retry loop when postgres user is missing
+
 ## 1.0.20
 
 Fixed missing postgres user error:

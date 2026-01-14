@@ -153,21 +153,32 @@ spec:
                     sleep 10
                     MAX_RETRIES=30
                     RETRY=0
-                    until psql -h /var/run/postgresql -U postgres -d "${POSTGRES_DB}" -c "SELECT 1" > /dev/null 2>&1; do
-                      RETRY=$((RETRY+1))
-                      if [ $RETRY -ge $MAX_RETRIES ]; then
-                        echo "ERROR: Database did not become ready after $MAX_RETRIES attempts"
-                        exit 1
+                    # Try to connect to database - first as postgres, then without user (peer auth)
+                    DB_READY=false
+                    while [ $RETRY -lt $MAX_RETRIES ]; do
+                      if psql -h /var/run/postgresql -U postgres -d "${POSTGRES_DB}" -c "SELECT 1" > /dev/null 2>&1; then
+                        DB_READY=true
+                        break
                       fi
+                      # Try without user (peer authentication as container user)
+                      if psql -h /var/run/postgresql -d "${POSTGRES_DB}" -c "SELECT 1" > /dev/null 2>&1; then
+                        DB_READY=true
+                        break
+                      fi
+                      RETRY=$((RETRY+1))
                       echo "Waiting for database to be ready for user creation... (attempt $RETRY/$MAX_RETRIES)"
                       sleep 2
                     done
+                    if [ "$DB_READY" = false ]; then
+                      echo "ERROR: Database did not become ready after $MAX_RETRIES attempts"
+                      exit 1
+                    fi
                     echo "Database is ready. Ensuring postgres user exists..."
-                    # First, try to connect as postgres user. If it doesn't exist, connect as the database owner
-                    # The database owner is usually the user that was used during initdb
+                    # Try to create postgres user if it doesn't exist
+                    # First try as postgres user, if that fails, try without user (peer auth)
                     if ! psql -h /var/run/postgresql -U postgres -d "${POSTGRES_DB}" -c "SELECT 1" > /dev/null 2>&1; then
-                      echo "postgres user does not exist, trying to connect as database owner..."
-                      # Try to connect without specifying user (will use peer authentication as the container user)
+                      echo "postgres user does not exist, creating it..."
+                      # Connect without user (peer authentication) and create postgres user
                       if psql -h /var/run/postgresql -d "${POSTGRES_DB}" -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'postgres') THEN CREATE USER postgres WITH SUPERUSER CREATEDB CREATEROLE; RAISE NOTICE 'postgres user created'; END IF; END \$\$;" 2>&1; then
                         echo "postgres user created successfully"
                       else
