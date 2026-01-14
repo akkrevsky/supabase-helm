@@ -37,13 +37,25 @@ spec:
           imagePullPolicy: {{ .Values.meta.image.pullPolicy }}
           env:
             {{- range $key, $value := .Values.meta.environment }}
+            {{- if ne $key "DB_USER" }}
             - name: {{ $key }}
               value: {{ $value | quote }}
+            {{- end }}
             {{- end }}
             {{- if .Values.db.enabled }}
             - name: DB_HOST
               value: {{ include "supabase.db.fullname" . }}
             {{- end }}
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.secret.db.secretRef }}
+                  name: {{ .Values.secret.db.secretRef }}
+                  key: {{ .Values.secret.db.secretRefKey.username | default "username" }}
+                  {{- else }}
+                  name: {{ include "supabase.secret.db" . }}
+                  key: username
+                  {{- end }}
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
