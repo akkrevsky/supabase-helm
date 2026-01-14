@@ -1,3 +1,35 @@
+## 1.0.20
+
+Fixed missing postgres user error:
+  - Added creation of postgres user in 99-roles.sql initialization script
+  - Added fallback in postStart hook to create postgres user if it doesn't exist
+  - Fixes "role postgres does not exist" errors when database is already initialized
+  - postStart hook now tries to connect without user first (peer auth) if postgres user doesn't exist
+
+## 1.0.19
+
+Fixed initialization script errors:
+  - Made 99-logs.sql and 99-realtime.sql check if POSTGRES_USER exists before setting schema owner
+  - Prevents "Peer authentication failed" errors when scripts run before user creation
+  - Scripts now use DO blocks to safely check user existence before ALTER SCHEMA OWNER
+
+## 1.0.18
+
+Fixed postStart hook failures:
+  - Removed `set -e` to prevent script termination on non-critical errors
+  - Made all psql commands continue on error with warnings instead of failing
+  - This prevents pod restarts due to FailedPostStartHook errors
+  - Script now logs warnings but continues execution, allowing pod to start successfully
+
+## 1.0.17
+
+Fixed REPLICATION and schema ownership issues:
+  - Removed attempt to add REPLICATION via ALTER USER (PostgreSQL doesn't allow this, REPLICATION can only be set at user creation)
+  - Removed ALTER SCHEMA OWNER (requires being member of role, causes "must be member of role" error)
+  - Now using only GRANT statements which don't require role membership
+  - Added warning if existing user doesn't have REPLICATION (requires user recreation to add REPLICATION)
+  - Changed ownership of existing tables/sequences to POSTGRES_USER (this works as superuser)
+
 ## 1.0.16
 
 Fixed ownership and REPLICATION issues:

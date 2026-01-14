@@ -17,16 +17,36 @@ data:
     \set pguser `echo "$POSTGRES_USER"`
 
     create schema if not exists _analytics;
-    alter schema _analytics owner to :pguser;
+    -- Only set owner if user exists (user is created in 99-roles.sql)
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'pguser') THEN
+        EXECUTE format('ALTER SCHEMA _analytics OWNER TO %I', :'pguser');
+      END IF;
+    END $$;
   99-realtime.sql: |
     \set pguser `echo "$POSTGRES_USER"`
 
     create schema if not exists _realtime;
-    alter schema _realtime owner to :pguser;
+    -- Only set owner if user exists (user is created in 99-roles.sql)
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'pguser') THEN
+        EXECUTE format('ALTER SCHEMA _realtime OWNER TO %I', :'pguser');
+      END IF;
+    END $$;
   99-roles.sql: |
     -- NOTE: change to your own passwords for production environments
     \set pgpass `echo "$POSTGRES_PASSWORD"`
     \set pguser `echo "$POSTGRES_USER"`
+
+    -- Ensure postgres user exists (required for postStart hook and standard PostgreSQL operations)
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'postgres') THEN
+        CREATE USER postgres WITH SUPERUSER CREATEDB CREATEROLE;
+      END IF;
+    END $$;
 
     -- Create or alter the main postgres user from POSTGRES_USER
     -- Note: Standard PostgreSQL image creates this user automatically on first init,
