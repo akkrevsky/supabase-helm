@@ -1,3 +1,12 @@
+## 1.0.2
+
+Fixed AWS_SECRET_ACCESS_KEY to use accessKey instead of keyId in storage deployment when using secretRef.
+Added envFrom support for storage deployment to load secrets from vault.
+
+## 1.0.1
+
+Initial patched version with db service fix.
+
 ## 1.0.0
 
 Added PG bouncer to help prevent the service from being overwhelmed with calls to the database. This is a breaking change as the database service name has changed. 

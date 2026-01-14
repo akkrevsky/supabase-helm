@@ -1,4 +1,7 @@
+VERSION := $(shell grep '^version:' Chart.yaml | awk '{print $$2}')
+
 helm-package:
-	helm package .
+	helm package . --version $(VERSION)
+
 helm-push:
-	helm push supabase-1.0.1.tgz oci://registry-1.docker.io/00005555
+	helm push supabase-$(VERSION).tgz oci://registry-1.docker.io/00005555

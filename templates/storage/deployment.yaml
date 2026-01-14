@@ -187,7 +187,7 @@ spec:
                 secretKeyRef:
                 {{- if .Values.secret.s3.secretRef }}
                   name: {{ .Values.secret.s3.secretRef }}
-                  key: {{ .Values.secret.s3.secretRefKey.keyId | default "accessKey" }}
+                  key: {{ .Values.secret.s3.secretRefKey.accessKey | default "accessKey" }}
                 {{- else }}
                   name: {{ include "supabase.secret.s3" . }}
                   key: accessKey
@@ -197,6 +197,10 @@ spec:
             - name: GLOBAL_S3_ENDPOINT
               value: http://{{ include "supabase.minio.fullname" . }}:{{ default 9000 .Values.minio.service.port }}
             {{- end }}
+          {{- with .Values.storage.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- with .Values.storage.livenessProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}
