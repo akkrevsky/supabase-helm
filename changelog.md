@@ -1,3 +1,19 @@
+## 1.0.25
+
+Fixed postgres role creation by using supabase_admin:
+  - Changed to use supabase_admin (default user in Supabase) for database connections
+  - This is the standard default user created during Supabase initialization
+  - Simplifies connection logic by using known default user instead of querying database owner
+  - Fixes "role postgres does not exist" errors by using supabase_admin to create postgres role
+
+## 1.0.24
+
+Fixed postgres role creation by using database owner:
+  - Changed to query pg_database to find the actual database owner
+  - Connects as the database owner (created during initdb) instead of trying to use non-existent postgres role
+  - This allows creating postgres role even when peer authentication requires existing role
+  - Fixes "role postgres does not exist" errors by using the actual database owner for connections
+
 ## 1.0.23
 
 Fixed postgres role creation using template1 database:
