@@ -1,3 +1,20 @@
+## 1.0.30
+
+Create missing Supabase system roles in postStart hook:
+  - Creates roles if they don't exist (not just update passwords)
+  - Creates: authenticator, anon, authenticated, service_role, pgbouncer, supabase_admin, supabase_auth_admin, supabase_functions_admin, supabase_storage_admin
+  - Grants anon/authenticated/service_role to authenticator
+  - Fixes "Role supabase_storage_admin does not exist" error on non-standard PVCs
+  - Each role created with appropriate privileges (SUPERUSER, CREATEDB, CREATEROLE, REPLICATION, BYPASSRLS, etc.)
+
+## 1.0.29
+
+Added password sync for Supabase system users in postStart hook:
+  - Updates passwords for authenticator, pgbouncer, supabase_admin, supabase_auth_admin, supabase_functions_admin, supabase_storage_admin
+  - Fixes "password authentication failed for user authenticator" error on existing PVCs
+  - Only updates password if user exists (safe for fresh installs)
+  - Uses POSTGRES_PASSWORD from secret for all system users
+
 ## 1.0.28
 
 Simplified postStart hook with password authentication:
