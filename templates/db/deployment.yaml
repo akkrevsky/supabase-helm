@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  namespace: {{  .Release.Namespace }}
+  namespace: {{ .Release.Namespace }}
   name: {{ include "supabase.db.fullname" . }}
   labels:
     {{- include "supabase.labels" . | nindent 4 }}
@@ -139,72 +139,86 @@ spec:
                   - /bin/sh
                   - -c
                   - |
-                    echo "=== Starting postStart hook for user creation ==="
+                    set -eu
+
+                    echo "=== Starting postStart hook (role/schema bootstrap) ==="
                     echo "POSTGRES_USER: ${POSTGRES_USER}"
                     echo "POSTGRES_DB: ${POSTGRES_DB}"
                     echo "POSTGRES_PASSWORD length: $(echo -n "${POSTGRES_PASSWORD}" | wc -c)"
-                    if [ -z "${POSTGRES_USER}" ] || [ -z "${POSTGRES_PASSWORD}" ] || [ -z "${POSTGRES_DB}" ]; then
+
+                    if [ -z "${POSTGRES_USER:-}" ] || [ -z "${POSTGRES_PASSWORD:-}" ] || [ -z "${POSTGRES_DB:-}" ]; then
                       echo "ERROR: Required environment variables are not set!"
-                      echo "POSTGRES_USER=${POSTGRES_USER}"
-                      echo "POSTGRES_DB=${POSTGRES_DB}"
+                      echo "POSTGRES_USER=${POSTGRES_USER:-}"
+                      echo "POSTGRES_DB=${POSTGRES_DB:-}"
                       echo "POSTGRES_PASSWORD is ${POSTGRES_PASSWORD:+set}${POSTGRES_PASSWORD:-unset}"
                       exit 1
                     fi
-                    sleep 10
-                    MAX_RETRIES=30
+
+                    # Use password auth explicitly (do NOT rely on peer auth as OS user "postgres",
+                    # because DB role "postgres" may not exist on existing PVCs)
+                    export PGPASSWORD="${POSTGRES_PASSWORD}"
+                    HOST="/var/run/postgresql"
+
+                    echo "Waiting for database to accept connections as ${POSTGRES_USER}..."
+                    MAX_RETRIES=60
                     RETRY=0
-                    # First, check if database is ready
-                    # Try to connect as supabase_admin (default user in Supabase)
-                    echo "Waiting for database to be ready..."
-                    until su - postgres -c "psql -h /var/run/postgresql -U supabase_admin -d template1 -c 'SELECT 1'" > /dev/null 2>&1; do
-                      RETRY=$((RETRY+1))
-                      if [ $RETRY -ge $MAX_RETRIES ]; then
-                        echo "ERROR: Database did not become ready after $MAX_RETRIES attempts"
-                        exit 1
+                    while [ $RETRY -lt $MAX_RETRIES ]; do
+                      if psql -h "${HOST}" -U "${POSTGRES_USER}" -d template1 -c "SELECT 1" >/dev/null 2>&1; then
+                        break
                       fi
-                      echo "Waiting for database to be ready... (attempt $RETRY/$MAX_RETRIES)"
+                      RETRY=$((RETRY+1))
+                      echo "Waiting for DB... (attempt $RETRY/$MAX_RETRIES)"
                       sleep 2
                     done
-                    echo "Database is ready. Ensuring postgres user exists..."
-                    # Check if postgres role exists and create it using supabase_admin
-                    if su - postgres -c "psql -h /var/run/postgresql -U supabase_admin -d template1 -tAc \"SELECT 1 FROM pg_roles WHERE rolname = 'postgres'\"" 2>/dev/null | grep -q "1"; then
-                      echo "postgres database user already exists"
-                    else
-                      echo "postgres database user does not exist, creating it..."
-                      # Create postgres role using supabase_admin
-                      if su - postgres -c "psql -h /var/run/postgresql -U supabase_admin -d template1 -c 'CREATE ROLE postgres WITH SUPERUSER CREATEDB CREATEROLE LOGIN;'" 2>&1; then
-                        echo "postgres database user created successfully"
-                      else
-                        echo "WARNING: Failed to create postgres database user, but continuing..."
-                      fi
+
+                    if ! psql -h "${HOST}" -U "${POSTGRES_USER}" -d template1 -c "SELECT 1" >/dev/null 2>&1; then
+                      echo "ERROR: Cannot connect to DB as POSTGRES_USER='${POSTGRES_USER}'."
+                      echo "If this is an existing PVC, the stored roles/password may differ from the current secret."
+                      echo "Options: (1) align secret with existing DB roles, or (2) delete PVC to re-init."
+                      exit 1
                     fi
-                    echo "Ensuring user ${POSTGRES_USER} exists..."
-                    # Use psql -c with proper variable substitution
-                    # Escape single quotes in password for SQL (double them for SQL string literal)
-                    ESCAPED_PASSWORD=$(echo "${POSTGRES_PASSWORD}" | sed "s/'/''/g")
-                    # Create or update user with REPLICATION for realtime WAL
-                    # Note: REPLICATION can only be set at user creation, not via ALTER USER
-                    if psql -h /var/run/postgresql -U postgres -d "${POSTGRES_DB}" -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${POSTGRES_USER}') THEN EXECUTE format('CREATE USER %I WITH PASSWORD %L CREATEDB CREATEROLE REPLICATION', '${POSTGRES_USER}', '${ESCAPED_PASSWORD}'); RAISE NOTICE 'User ${POSTGRES_USER} created successfully with REPLICATION'; ELSE EXECUTE format('ALTER USER %I WITH PASSWORD %L', '${POSTGRES_USER}', '${ESCAPED_PASSWORD}'); RAISE NOTICE 'User ${POSTGRES_USER} password updated successfully'; IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${POSTGRES_USER}' AND rolreplication = true) THEN RAISE WARNING 'User ${POSTGRES_USER} does not have REPLICATION privilege. This can only be set at user creation. Consider recreating the user if REPLICATION is required.'; END IF; END IF; EXCEPTION WHEN OTHERS THEN RAISE WARNING 'Failed to create/update user: %', SQLERRM; END \$\$;" 2>&1; then
-                      echo "User creation/update completed"
-                    else
-                      echo "WARNING: User creation/update had errors, but continuing..."
-                    fi
-                    echo "Ensuring schemas _realtime and _analytics exist..."
-                    # Create schemas and grant privileges
-                    # Use GRANT instead of ALTER OWNER to avoid "must be member of role" error
-                    # Change ownership of existing tables/sequences to user (postgres can do this as superuser)
-                    if psql -h /var/run/postgresql -U postgres -d "${POSTGRES_DB}" -c "CREATE SCHEMA IF NOT EXISTS _realtime; CREATE SCHEMA IF NOT EXISTS _analytics; DO \$\$ DECLARE r RECORD; BEGIN FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = '_realtime' LOOP EXECUTE format('ALTER TABLE _realtime.%I OWNER TO %I', r.tablename, '${POSTGRES_USER}'); END LOOP; FOR r IN SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = '_realtime' LOOP EXECUTE format('ALTER SEQUENCE _realtime.%I OWNER TO %I', r.sequence_name, '${POSTGRES_USER}'); END LOOP; FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = '_analytics' LOOP EXECUTE format('ALTER TABLE _analytics.%I OWNER TO %I', r.tablename, '${POSTGRES_USER}'); END LOOP; FOR r IN SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = '_analytics' LOOP EXECUTE format('ALTER SEQUENCE _analytics.%I OWNER TO %I', r.sequence_name, '${POSTGRES_USER}'); END LOOP; EXCEPTION WHEN OTHERS THEN RAISE WARNING 'Failed to change ownership: %', SQLERRM; END \$\$; GRANT ALL ON SCHEMA _realtime TO ${POSTGRES_USER}; GRANT ALL ON SCHEMA _analytics TO ${POSTGRES_USER}; GRANT CREATE ON SCHEMA _realtime TO ${POSTGRES_USER}; GRANT CREATE ON SCHEMA _analytics TO ${POSTGRES_USER}; GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA _realtime TO ${POSTGRES_USER}; GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA _realtime TO ${POSTGRES_USER}; GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA _analytics TO ${POSTGRES_USER}; GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA _analytics TO ${POSTGRES_USER}; ALTER DEFAULT PRIVILEGES IN SCHEMA _realtime GRANT ALL ON TABLES TO ${POSTGRES_USER}; ALTER DEFAULT PRIVILEGES IN SCHEMA _realtime GRANT ALL ON SEQUENCES TO ${POSTGRES_USER}; ALTER DEFAULT PRIVILEGES IN SCHEMA _analytics GRANT ALL ON TABLES TO ${POSTGRES_USER}; ALTER DEFAULT PRIVILEGES IN SCHEMA _analytics GRANT ALL ON SEQUENCES TO ${POSTGRES_USER};" 2>&1; then
-                      echo "Schema setup completed"
-                    else
-                      echo "WARNING: Schema setup had errors, but continuing..."
-                    fi
-                    echo "Setting default search_path for user ${POSTGRES_USER}..."
-                    if psql -h /var/run/postgresql -U postgres -d "${POSTGRES_DB}" -c "ALTER USER ${POSTGRES_USER} SET search_path = public, _realtime, _analytics;" 2>&1; then
-                      echo "Search path set successfully"
-                    else
-                      echo "WARNING: Failed to set search_path, but continuing..."
-                    fi
-                    echo "=== User ${POSTGRES_USER} check completed ==="
+                    echo "DB is reachable."
+
+                    # (Optional) Ensure role 'postgres' exists. Some apps/tools expect it, but we never rely on it.
+                    echo "Ensuring DB role 'postgres' exists (optional)..."
+                    psql -h "${HOST}" -U "${POSTGRES_USER}" -d template1 -v ON_ERROR_STOP=1 -c "
+                    DO \$\$
+                    BEGIN
+                      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'postgres') THEN
+                        CREATE ROLE postgres WITH SUPERUSER CREATEDB CREATEROLE LOGIN;
+                      END IF;
+                    END
+                    \$\$;
+                    " || echo "WARNING: Could not create role 'postgres' (continuing)."
+
+                    # Ensure schemas exist and grant privileges to POSTGRES_USER (the user we know works)
+                    echo "Ensuring schemas _realtime and _analytics exist and are accessible..."
+                    psql -h "${HOST}" -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -v ON_ERROR_STOP=1 -c "
+                      CREATE SCHEMA IF NOT EXISTS _realtime;
+                      CREATE SCHEMA IF NOT EXISTS _analytics;
+
+                      GRANT ALL ON SCHEMA _realtime TO ${POSTGRES_USER};
+                      GRANT ALL ON SCHEMA _analytics TO ${POSTGRES_USER};
+                      GRANT CREATE ON SCHEMA _realtime TO ${POSTGRES_USER};
+                      GRANT CREATE ON SCHEMA _analytics TO ${POSTGRES_USER};
+
+                      GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA _realtime TO ${POSTGRES_USER};
+                      GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA _realtime TO ${POSTGRES_USER};
+                      GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA _analytics TO ${POSTGRES_USER};
+                      GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA _analytics TO ${POSTGRES_USER};
+
+                      ALTER DEFAULT PRIVILEGES IN SCHEMA _realtime GRANT ALL ON TABLES TO ${POSTGRES_USER};
+                      ALTER DEFAULT PRIVILEGES IN SCHEMA _realtime GRANT ALL ON SEQUENCES TO ${POSTGRES_USER};
+                      ALTER DEFAULT PRIVILEGES IN SCHEMA _analytics GRANT ALL ON TABLES TO ${POSTGRES_USER};
+                      ALTER DEFAULT PRIVILEGES IN SCHEMA _analytics GRANT ALL ON SEQUENCES TO ${POSTGRES_USER};
+                    " || echo "WARNING: Schema grants/default privileges had errors (continuing)."
+
+                    echo "Setting default search_path for ${POSTGRES_USER}..."
+                    psql -h "${HOST}" -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -v ON_ERROR_STOP=1 -c "
+                      ALTER ROLE ${POSTGRES_USER} SET search_path = public, _realtime, _analytics;
+                    " || echo "WARNING: Failed to set search_path (continuing)."
+
+                    echo "=== postStart hook completed ==="
           ports:
             - name: http
               containerPort: 9999

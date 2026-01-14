@@ -1,3 +1,20 @@
+## 1.0.27
+
+Added POSTGRES_USER as connection fallback:
+  - Added attempt to connect using POSTGRES_USER (may be the database owner)
+  - This handles cases where database is initialized but default users don't exist
+  - Improved error message suggesting PVC deletion if connection fails
+  - Fixes connection issues when database is already initialized without proper roles
+
+## 1.0.26
+
+Fixed postgres role creation with fallback logic:
+  - Changed to try peer authentication without -U first (uses system user postgres)
+  - If that fails, queries pg_database to find the actual database owner
+  - Connects as the database owner to create postgres role
+  - This handles cases where supabase_admin doesn't exist (database already initialized)
+  - Fixes "Role supabase_admin does not exist" errors by using database owner instead
+
 ## 1.0.25
 
 Fixed postgres role creation by using supabase_admin:
