@@ -1,3 +1,17 @@
+## 1.0.13
+
+Fixed schema permissions for realtime and analytics:
+  - Added GRANT CREATE ON SCHEMA for _realtime and _analytics schemas
+  - Added ALTER DEFAULT PRIVILEGES for SEQUENCES in addition to TABLES
+  - This fixes "permission denied for table schema_migrations" errors
+
+## 1.0.12
+
+Fixed database user creation issues in postStart hook:
+  - REPLICATION privilege now only added when creating new user (not when updating existing)
+  - Changed schema ownership to GRANT permissions (avoids "must be member of role" error)
+  - Added ALTER DEFAULT PRIVILEGES for automatic permissions on future tables in schemas
+
 ## 1.0.11
 
 Fixed database user creation in postStart hook:
