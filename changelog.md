@@ -1,3 +1,24 @@
+## 1.0.16
+
+Fixed ownership and REPLICATION issues:
+  - Added REPLICATION privilege check and grant for existing users (fixes "must be superuser or replication role to start walsender")
+  - Changed ownership of all existing tables and sequences in _realtime and _analytics schemas to POSTGRES_USER
+  - This fixes "permission denied for table schema_migrations" errors by ensuring user owns the tables
+
+## 1.0.15
+
+Fixed GRANT commands error handling:
+  - Wrapped GRANT ALL PRIVILEGES ON ALL TABLES/SEQUENCES commands in DO blocks with exception handling
+  - Prevents script failure when some tables cannot be accessed during grant operations
+  - Errors are logged as warnings instead of causing script termination
+
+## 1.0.14
+
+Fixed permissions on existing tables in schemas:
+  - Added GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA for _realtime and _analytics
+  - Added GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA for _realtime and _analytics
+  - This fixes "permission denied for table schema_migrations" errors on existing tables
+
 ## 1.0.13
 
 Fixed schema permissions for realtime and analytics:
