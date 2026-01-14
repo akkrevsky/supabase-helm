@@ -1,3 +1,12 @@
+## 1.0.34
+
+Simplified chart - removed postStart hook and custom user creation:
+  - Removed complex postStart hook entirely
+  - Simplified init scripts to only update passwords for existing Supabase users
+  - Schemas _realtime and _analytics now owned by supabase_admin (standard)
+  - **IMPORTANT**: Requires POSTGRES_USER=supabase_admin in secret
+  - supabase_admin is the standard Supabase superuser that works with supabase_map
+
 ## 1.0.33
 
 Switched from Unix socket to TCP with password auth in postStart hook:

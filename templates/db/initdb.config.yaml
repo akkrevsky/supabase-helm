@@ -14,57 +14,14 @@ data:
     ALTER DATABASE postgres SET "app.settings.jwt_secret" TO :jwt_secret;
     ALTER DATABASE postgres SET "app.settings.jwt_exp" TO :jwt_exp;
   99-logs.sql: |
-    \set pguser `echo "$POSTGRES_USER"`
-
     create schema if not exists _analytics;
-    -- Only set owner if user exists (user is created in 99-roles.sql)
-    DO $$
-    BEGIN
-      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'pguser') THEN
-        EXECUTE format('ALTER SCHEMA _analytics OWNER TO %I', :'pguser');
-      END IF;
-    END $$;
+    alter schema _analytics owner to supabase_admin;
   99-realtime.sql: |
-    \set pguser `echo "$POSTGRES_USER"`
-
     create schema if not exists _realtime;
-    -- Only set owner if user exists (user is created in 99-roles.sql)
-    DO $$
-    BEGIN
-      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'pguser') THEN
-        EXECUTE format('ALTER SCHEMA _realtime OWNER TO %I', :'pguser');
-      END IF;
-    END $$;
+    alter schema _realtime owner to supabase_admin;
   99-roles.sql: |
     -- NOTE: change to your own passwords for production environments
     \set pgpass `echo "$POSTGRES_PASSWORD"`
-    \set pguser `echo "$POSTGRES_USER"`
-
-    -- Ensure postgres user exists (required for postStart hook and standard PostgreSQL operations)
-    DO $$
-    BEGIN
-      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'postgres') THEN
-        CREATE USER postgres WITH SUPERUSER CREATEDB CREATEROLE;
-      END IF;
-    END $$;
-
-    -- Create or alter the main postgres user from POSTGRES_USER
-    -- Note: Standard PostgreSQL image creates this user automatically on first init,
-    -- but we ensure it exists and has the correct password for existing databases
-    CREATE OR REPLACE FUNCTION create_or_alter_user(username text, password text)
-    RETURNS void AS
-    $$
-    BEGIN
-      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = username) THEN
-        EXECUTE format('CREATE USER %I WITH PASSWORD %L SUPERUSER CREATEDB CREATEROLE', username, password);
-      ELSE
-        EXECUTE format('ALTER USER %I WITH PASSWORD %L', username, password);
-      END IF;
-    END;
-    $$ LANGUAGE plpgsql;
-
-    SELECT create_or_alter_user(:'pguser', :'pgpass');
-    DROP FUNCTION create_or_alter_user(text, text);
 
     ALTER USER authenticator WITH PASSWORD :'pgpass';
     ALTER USER pgbouncer WITH PASSWORD :'pgpass';
