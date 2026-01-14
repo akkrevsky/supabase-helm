@@ -1,3 +1,11 @@
+## 1.0.11
+
+Fixed database user creation in postStart hook:
+  - Added REPLICATION privilege for realtime WAL (walsender) support
+  - Added automatic creation of _realtime and _analytics schemas
+  - Set schema ownership to POSTGRES_USER
+  - Configured default search_path for user (public, _realtime, _analytics)
+
 ## 1.0.10
 
 Improved postStart hook for database user creation:
