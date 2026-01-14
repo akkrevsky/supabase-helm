@@ -1,3 +1,11 @@
+## 1.0.33
+
+Switched from Unix socket to TCP with password auth in postStart hook:
+  - Container runs as root, not postgres, so peer auth via supabase_map fails
+  - Now connects via TCP (127.0.0.1) as supabase_admin with POSTGRES_PASSWORD
+  - supabase_admin is the default Supabase superuser created during init
+  - Fixes "Peer authentication failed for user root" error
+
 ## 1.0.32
 
 Added auth schema creation and supabase_auth_admin configuration:

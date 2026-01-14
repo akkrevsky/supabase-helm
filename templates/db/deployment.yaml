@@ -154,15 +154,18 @@ spec:
                       exit 1
                     fi
 
-                    # Wait for PostgreSQL to be ready using Unix socket (peer auth)
-                    # This works because the container runs as user 'postgres' and pg_hba.conf allows peer auth for local connections
-                    echo "Waiting for database to accept connections via Unix socket..."
+                    # Wait for PostgreSQL to be ready using TCP with password auth
+                    # Container runs as root, so we can't use peer auth (supabase_map doesn't allow root)
+                    # Connect as supabase_admin which is created by Supabase init scripts with POSTGRES_PASSWORD
+                    export PGPASSWORD="${POSTGRES_PASSWORD}"
+                    HOST="127.0.0.1"
+                    
+                    echo "Waiting for database to accept connections via TCP..."
                     MAX_RETRIES=60
                     RETRY=0
                     while [ $RETRY -lt $MAX_RETRIES ]; do
-                      # Try to connect via Unix socket - this uses peer authentication
-                      # The system user 'postgres' maps to the database superuser that owns the cluster
-                      if psql -h /var/run/postgresql -d template1 -c "SELECT 1" >/dev/null 2>&1; then
+                      # Try to connect via TCP as supabase_admin (default Supabase superuser)
+                      if psql -h "${HOST}" -U supabase_admin -d template1 -c "SELECT 1" >/dev/null 2>&1; then
                         break
                       fi
                       RETRY=$((RETRY+1))
@@ -170,16 +173,16 @@ spec:
                       sleep 2
                     done
 
-                    if ! psql -h /var/run/postgresql -d template1 -c "SELECT 1" >/dev/null 2>&1; then
-                      echo "ERROR: Cannot connect to DB via Unix socket."
-                      echo "This should not happen - the container user should have peer auth access."
+                    if ! psql -h "${HOST}" -U supabase_admin -d template1 -c "SELECT 1" >/dev/null 2>&1; then
+                      echo "ERROR: Cannot connect to DB as supabase_admin."
+                      echo "Make sure POSTGRES_PASSWORD matches the password used during DB initialization."
                       exit 1
                     fi
-                    echo "DB is reachable via Unix socket."
+                    echo "DB is reachable via TCP as supabase_admin."
 
-                    # First, update POSTGRES_USER password (this is the user from the secret)
+                    # First, ensure POSTGRES_USER exists and has correct password
                     echo "Ensuring POSTGRES_USER '${POSTGRES_USER}' exists and has correct password..."
-                    psql -h /var/run/postgresql -d template1 -c "
+                    psql -h "${HOST}" -U supabase_admin -d template1 -c "
                     DO \$\$
                     DECLARE
                       v_password TEXT := '${POSTGRES_PASSWORD}';
@@ -197,7 +200,7 @@ spec:
 
                     # Ensure role 'postgres' exists (some tools expect it)
                     echo "Ensuring DB role 'postgres' exists..."
-                    psql -h /var/run/postgresql -d template1 -c "
+                    psql -h "${HOST}" -U supabase_admin -d template1 -c "
                     DO \$\$
                     BEGIN
                       IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'postgres') THEN
@@ -210,7 +213,7 @@ spec:
 
                     # Ensure schemas exist and grant privileges to POSTGRES_USER
                     echo "Ensuring schemas _realtime, _analytics, and auth exist and are accessible..."
-                    psql -h /var/run/postgresql -d "${POSTGRES_DB}" -v ON_ERROR_STOP=1 -c "
+                    psql -h "${HOST}" -U supabase_admin -d "${POSTGRES_DB}" -v ON_ERROR_STOP=1 -c "
                       CREATE SCHEMA IF NOT EXISTS _realtime;
                       CREATE SCHEMA IF NOT EXISTS _analytics;
                       CREATE SCHEMA IF NOT EXISTS auth;
@@ -238,13 +241,13 @@ spec:
                     " || echo "WARNING: Schema grants/default privileges had errors (continuing)."
 
                     echo "Setting default search_path for ${POSTGRES_USER}..."
-                    psql -h /var/run/postgresql -d "${POSTGRES_DB}" -v ON_ERROR_STOP=1 -c "
+                    psql -h "${HOST}" -U supabase_admin -d "${POSTGRES_DB}" -v ON_ERROR_STOP=1 -c "
                       ALTER ROLE ${POSTGRES_USER} SET search_path = public, _realtime, _analytics;
                     " || echo "WARNING: Failed to set search_path (continuing)."
 
                     # Create/update Supabase system users (for existing PVCs where init scripts didn't run)
                     echo "Ensuring Supabase system users exist with correct passwords..."
-                    psql -h /var/run/postgresql -d "${POSTGRES_DB}" -c "
+                    psql -h "${HOST}" -U supabase_admin -d "${POSTGRES_DB}" -c "
                       DO \$\$
                       DECLARE
                         v_password TEXT := '${POSTGRES_PASSWORD}';
