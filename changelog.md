@@ -1,3 +1,13 @@
+## 1.0.8
+
+Fixed GOTRUE_SMTP_PORT configuration error by replacing placeholder string "SMTP_PORT" with numeric value "587".
+Removed deprecated GOTRUE_JWT_DEFAULT_GROUP_NAME environment variable.
+Updated Makefile to automatically extract version from Chart.yaml and remove old .tgz files before packaging.
+Fixed database user authentication issues:
+  - Added password setup for supabase_admin user in database initialization script (99-roles.sql)
+  - Changed realtime, meta, and analytics services to read DB_USER/DB_USERNAME from secrets instead of hardcoded values
+  - Added postStart lifecycle hook in database container to automatically create/update user from POSTGRES_USER secret after database startup
+
 ## 1.0.2
 
 Fixed AWS_SECRET_ACCESS_KEY to use accessKey instead of keyId in storage deployment when using secretRef.

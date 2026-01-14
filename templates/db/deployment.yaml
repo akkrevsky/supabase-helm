@@ -139,13 +139,13 @@ spec:
                   - /bin/sh
                   - -c
                   - |
-                    sleep 5
-                    until psql -h /var/run/postgresql -U postgres -d $$POSTGRES_DB -c "SELECT 1" > /dev/null 2>&1; do
+                    sleep 10
+                    until psql -h /var/run/postgresql -U postgres -d "${POSTGRES_DB}" -c "SELECT 1" > /dev/null 2>&1; do
                       echo "Waiting for database to be ready for user creation..."
                       sleep 2
                     done
-                    echo "Ensuring user $$POSTGRES_USER exists..."
-                    psql -h /var/run/postgresql -U postgres -d $$POSTGRES_DB -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '$$POSTGRES_USER') THEN EXECUTE format('CREATE USER %I WITH PASSWORD %L SUPERUSER CREATEDB CREATEROLE', '$$POSTGRES_USER', '$$POSTGRES_PASSWORD'); RAISE NOTICE 'User $$POSTGRES_USER created'; ELSE EXECUTE format('ALTER USER %I WITH PASSWORD %L', '$$POSTGRES_USER', '$$POSTGRES_PASSWORD'); RAISE NOTICE 'User $$POSTGRES_USER password updated'; END IF; END \$\$;" || echo "Note: User creation may have failed, but continuing..."
+                    echo "Ensuring user ${POSTGRES_USER} exists..."
+                    psql -h /var/run/postgresql -U postgres -d "${POSTGRES_DB}" -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${POSTGRES_USER}') THEN EXECUTE format('CREATE USER %I WITH PASSWORD %L SUPERUSER CREATEDB CREATEROLE', '${POSTGRES_USER}', '${POSTGRES_PASSWORD}'); RAISE NOTICE 'User ${POSTGRES_USER} created'; ELSE EXECUTE format('ALTER USER %I WITH PASSWORD %L', '${POSTGRES_USER}', '${POSTGRES_PASSWORD}'); RAISE NOTICE 'User ${POSTGRES_USER} password updated'; END IF; END \$\$;" || echo "Note: User creation may have failed, but continuing..."
                     echo "User check completed"
           ports:
             - name: http
