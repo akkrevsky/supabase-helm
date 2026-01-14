@@ -153,36 +153,33 @@ spec:
                     sleep 10
                     MAX_RETRIES=30
                     RETRY=0
-                    # Try to connect to database - first as postgres, then without user (peer auth)
-                    DB_READY=false
-                    while [ $RETRY -lt $MAX_RETRIES ]; do
-                      if psql -h /var/run/postgresql -U postgres -d "${POSTGRES_DB}" -c "SELECT 1" > /dev/null 2>&1; then
-                        DB_READY=true
-                        break
-                      fi
-                      # Try without user (peer authentication as container user)
-                      if psql -h /var/run/postgresql -d "${POSTGRES_DB}" -c "SELECT 1" > /dev/null 2>&1; then
-                        DB_READY=true
-                        break
-                      fi
+                    # First, check if database is ready by trying to connect as postgres system user
+                    # Use su to switch to postgres system user and connect to template1 (always exists)
+                    # Don't specify database user, let peer auth map system user to database user
+                    echo "Waiting for database to be ready..."
+                    until su - postgres -c "psql -h /var/run/postgresql -d template1 -c 'SELECT 1'" > /dev/null 2>&1; do
                       RETRY=$((RETRY+1))
-                      echo "Waiting for database to be ready for user creation... (attempt $RETRY/$MAX_RETRIES)"
+                      if [ $RETRY -ge $MAX_RETRIES ]; then
+                        echo "ERROR: Database did not become ready after $MAX_RETRIES attempts"
+                        exit 1
+                      fi
+                      echo "Waiting for database to be ready... (attempt $RETRY/$MAX_RETRIES)"
                       sleep 2
                     done
-                    if [ "$DB_READY" = false ]; then
-                      echo "ERROR: Database did not become ready after $MAX_RETRIES attempts"
-                      exit 1
-                    fi
                     echo "Database is ready. Ensuring postgres user exists..."
-                    # Try to create postgres user if it doesn't exist
-                    # First try as postgres user, if that fails, try without user (peer auth)
-                    if ! psql -h /var/run/postgresql -U postgres -d "${POSTGRES_DB}" -c "SELECT 1" > /dev/null 2>&1; then
-                      echo "postgres user does not exist, creating it..."
-                      # Connect without user (peer authentication) and create postgres user
-                      if psql -h /var/run/postgresql -d "${POSTGRES_DB}" -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'postgres') THEN CREATE USER postgres WITH SUPERUSER CREATEDB CREATEROLE; RAISE NOTICE 'postgres user created'; END IF; END \$\$;" 2>&1; then
-                        echo "postgres user created successfully"
+                    # Create postgres database user if it doesn't exist
+                    # Connect to template1 and check/create postgres role
+                    # Use template1 because it always exists and we can connect to it
+                    if su - postgres -c "psql -h /var/run/postgresql -d template1 -tAc \"SELECT 1 FROM pg_roles WHERE rolname = 'postgres'\"" 2>/dev/null | grep -q "1"; then
+                      echo "postgres database user already exists"
+                    else
+                      echo "postgres database user does not exist, creating it..."
+                      # Connect as postgres system user to template1, create postgres database role
+                      # The system user postgres should be able to create roles via peer auth
+                      if su - postgres -c "psql -h /var/run/postgresql -d template1 -c 'CREATE ROLE postgres WITH SUPERUSER CREATEDB CREATEROLE LOGIN;'" 2>&1; then
+                        echo "postgres database user created successfully"
                       else
-                        echo "WARNING: Failed to create postgres user, but continuing..."
+                        echo "WARNING: Failed to create postgres database user, but continuing..."
                       fi
                     fi
                     echo "Ensuring user ${POSTGRES_USER} exists..."

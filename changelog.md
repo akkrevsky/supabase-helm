@@ -1,9 +1,25 @@
+## 1.0.23
+
+Fixed postgres role creation using template1 database:
+  - Changed to connect to template1 database instead of POSTGRES_DB (template1 always exists)
+  - Uses CREATE ROLE instead of CREATE USER (they are equivalent)
+  - This allows creating postgres role even when connecting as postgres system user via peer auth
+  - Fixes "role postgres does not exist" errors when trying to connect to POSTGRES_DB
+
+## 1.0.22
+
+Fixed peer authentication issues in postStart hook:
+  - Changed to use `su - postgres` to switch to postgres system user before running psql commands
+  - This allows peer authentication to work correctly (container runs as root, but needs postgres system user)
+  - Fixes "Peer authentication failed for user root" errors
+  - Database readiness check and postgres user creation now use postgres system user
+
 ## 1.0.21
 
-Improved postgres user creation in postStart hook:
-  - Changed connection logic to try both postgres user and peer authentication (without user)
-  - Database readiness check now tries both connection methods
-  - This ensures postStart hook can connect even if postgres user doesn't exist yet
+Fixed postgres user creation logic in postStart hook:
+  - Changed database readiness check to use peer authentication (without user) instead of postgres user
+  - This allows hook to connect even when postgres user doesn't exist yet
+  - Creates postgres user using peer authentication before attempting to use it
   - Fixes infinite retry loop when postgres user is missing
 
 ## 1.0.20
