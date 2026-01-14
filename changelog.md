@@ -1,3 +1,20 @@
+## 1.0.32
+
+Added auth schema creation and supabase_auth_admin configuration:
+  - Creates `auth` schema in postStart hook (required for GoTrue auth service)
+  - Sets `search_path = auth` for `supabase_auth_admin` role
+  - Grants ALL on auth schema to supabase_auth_admin
+  - Fixes "no schema has been selected to create in" error during auth migrations
+
+## 1.0.31
+
+Switched to Unix socket (peer auth) for postStart hook:
+  - Uses `/var/run/postgresql` Unix socket instead of TCP with password
+  - Peer authentication allows connecting as the database superuser without password
+  - First updates POSTGRES_USER password, then creates/updates all system users
+  - This fixes the chicken-and-egg problem where we couldn't connect because password didn't match
+  - Works on existing PVCs where passwords in DB differ from secrets
+
 ## 1.0.30
 
 Create missing Supabase system roles in postStart hook:

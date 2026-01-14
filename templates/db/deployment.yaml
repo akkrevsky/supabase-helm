@@ -154,16 +154,15 @@ spec:
                       exit 1
                     fi
 
-                    # Use password auth explicitly (do NOT rely on peer auth as OS user "postgres",
-                    # because DB role "postgres" may not exist on existing PVCs)
-                    export PGPASSWORD="${POSTGRES_PASSWORD}"
-                    HOST="127.0.0.1"
-
-                    echo "Waiting for database to accept connections as ${POSTGRES_USER}..."
+                    # Wait for PostgreSQL to be ready using Unix socket (peer auth)
+                    # This works because the container runs as user 'postgres' and pg_hba.conf allows peer auth for local connections
+                    echo "Waiting for database to accept connections via Unix socket..."
                     MAX_RETRIES=60
                     RETRY=0
                     while [ $RETRY -lt $MAX_RETRIES ]; do
-                      if psql -h "${HOST}" -U "${POSTGRES_USER}" -d template1 -c "SELECT 1" >/dev/null 2>&1; then
+                      # Try to connect via Unix socket - this uses peer authentication
+                      # The system user 'postgres' maps to the database superuser that owns the cluster
+                      if psql -h /var/run/postgresql -d template1 -c "SELECT 1" >/dev/null 2>&1; then
                         break
                       fi
                       RETRY=$((RETRY+1))
@@ -171,56 +170,81 @@ spec:
                       sleep 2
                     done
 
-                    if ! psql -h "${HOST}" -U "${POSTGRES_USER}" -d template1 -c "SELECT 1" >/dev/null 2>&1; then
-                      echo "ERROR: Cannot connect to DB as POSTGRES_USER='${POSTGRES_USER}'."
-                      echo "If this is an existing PVC, the stored roles/password may differ from the current secret."
-                      echo "Options: (1) align secret with existing DB roles, or (2) delete PVC to re-init."
+                    if ! psql -h /var/run/postgresql -d template1 -c "SELECT 1" >/dev/null 2>&1; then
+                      echo "ERROR: Cannot connect to DB via Unix socket."
+                      echo "This should not happen - the container user should have peer auth access."
                       exit 1
                     fi
-                    echo "DB is reachable."
+                    echo "DB is reachable via Unix socket."
 
-                    # (Optional) Ensure role 'postgres' exists. Some apps/tools expect it, but we never rely on it.
-                    echo "Ensuring DB role 'postgres' exists (optional)..."
-                    psql -h "${HOST}" -U "${POSTGRES_USER}" -d template1 -v ON_ERROR_STOP=1 -c "
+                    # First, update POSTGRES_USER password (this is the user from the secret)
+                    echo "Ensuring POSTGRES_USER '${POSTGRES_USER}' exists and has correct password..."
+                    psql -h /var/run/postgresql -d template1 -c "
+                    DO \$\$
+                    DECLARE
+                      v_password TEXT := '${POSTGRES_PASSWORD}';
+                    BEGIN
+                      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${POSTGRES_USER}') THEN
+                        EXECUTE format('CREATE ROLE %I WITH LOGIN PASSWORD %L SUPERUSER CREATEDB CREATEROLE REPLICATION', '${POSTGRES_USER}', v_password);
+                        RAISE NOTICE 'Created role ${POSTGRES_USER}';
+                      ELSE
+                        EXECUTE format('ALTER ROLE %I WITH PASSWORD %L', '${POSTGRES_USER}', v_password);
+                        RAISE NOTICE 'Updated password for ${POSTGRES_USER}';
+                      END IF;
+                    END
+                    \$\$;
+                    " || echo "WARNING: Could not create/update POSTGRES_USER (continuing)."
+
+                    # Ensure role 'postgres' exists (some tools expect it)
+                    echo "Ensuring DB role 'postgres' exists..."
+                    psql -h /var/run/postgresql -d template1 -c "
                     DO \$\$
                     BEGIN
                       IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'postgres') THEN
                         CREATE ROLE postgres WITH SUPERUSER CREATEDB CREATEROLE LOGIN;
+                        RAISE NOTICE 'Created role postgres';
                       END IF;
                     END
                     \$\$;
                     " || echo "WARNING: Could not create role 'postgres' (continuing)."
 
-                    # Ensure schemas exist and grant privileges to POSTGRES_USER (the user we know works)
-                    echo "Ensuring schemas _realtime and _analytics exist and are accessible..."
-                    psql -h "${HOST}" -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -v ON_ERROR_STOP=1 -c "
+                    # Ensure schemas exist and grant privileges to POSTGRES_USER
+                    echo "Ensuring schemas _realtime, _analytics, and auth exist and are accessible..."
+                    psql -h /var/run/postgresql -d "${POSTGRES_DB}" -v ON_ERROR_STOP=1 -c "
                       CREATE SCHEMA IF NOT EXISTS _realtime;
                       CREATE SCHEMA IF NOT EXISTS _analytics;
+                      CREATE SCHEMA IF NOT EXISTS auth;
 
                       GRANT ALL ON SCHEMA _realtime TO ${POSTGRES_USER};
                       GRANT ALL ON SCHEMA _analytics TO ${POSTGRES_USER};
+                      GRANT ALL ON SCHEMA auth TO ${POSTGRES_USER};
                       GRANT CREATE ON SCHEMA _realtime TO ${POSTGRES_USER};
                       GRANT CREATE ON SCHEMA _analytics TO ${POSTGRES_USER};
+                      GRANT CREATE ON SCHEMA auth TO ${POSTGRES_USER};
 
                       GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA _realtime TO ${POSTGRES_USER};
                       GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA _realtime TO ${POSTGRES_USER};
                       GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA _analytics TO ${POSTGRES_USER};
                       GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA _analytics TO ${POSTGRES_USER};
+                      GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA auth TO ${POSTGRES_USER};
+                      GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA auth TO ${POSTGRES_USER};
 
                       ALTER DEFAULT PRIVILEGES IN SCHEMA _realtime GRANT ALL ON TABLES TO ${POSTGRES_USER};
                       ALTER DEFAULT PRIVILEGES IN SCHEMA _realtime GRANT ALL ON SEQUENCES TO ${POSTGRES_USER};
                       ALTER DEFAULT PRIVILEGES IN SCHEMA _analytics GRANT ALL ON TABLES TO ${POSTGRES_USER};
                       ALTER DEFAULT PRIVILEGES IN SCHEMA _analytics GRANT ALL ON SEQUENCES TO ${POSTGRES_USER};
+                      ALTER DEFAULT PRIVILEGES IN SCHEMA auth GRANT ALL ON TABLES TO ${POSTGRES_USER};
+                      ALTER DEFAULT PRIVILEGES IN SCHEMA auth GRANT ALL ON SEQUENCES TO ${POSTGRES_USER};
                     " || echo "WARNING: Schema grants/default privileges had errors (continuing)."
 
                     echo "Setting default search_path for ${POSTGRES_USER}..."
-                    psql -h "${HOST}" -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -v ON_ERROR_STOP=1 -c "
+                    psql -h /var/run/postgresql -d "${POSTGRES_DB}" -v ON_ERROR_STOP=1 -c "
                       ALTER ROLE ${POSTGRES_USER} SET search_path = public, _realtime, _analytics;
                     " || echo "WARNING: Failed to set search_path (continuing)."
 
                     # Create/update Supabase system users (for existing PVCs where init scripts didn't run)
                     echo "Ensuring Supabase system users exist with correct passwords..."
-                    psql -h "${HOST}" -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -c "
+                    psql -h /var/run/postgresql -d "${POSTGRES_DB}" -c "
                       DO \$\$
                       DECLARE
                         v_password TEXT := '${POSTGRES_PASSWORD}';
@@ -283,6 +307,12 @@ spec:
                           EXECUTE format('ALTER ROLE supabase_auth_admin WITH PASSWORD %L', v_password);
                           RAISE NOTICE 'Updated password for supabase_auth_admin';
                         END IF;
+                        -- Set search_path for supabase_auth_admin (required for auth service)
+                        ALTER ROLE supabase_auth_admin SET search_path = auth;
+                        -- Grant all on auth schema to supabase_auth_admin
+                        GRANT ALL ON SCHEMA auth TO supabase_auth_admin;
+                        GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA auth TO supabase_auth_admin;
+                        GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA auth TO supabase_auth_admin;
 
                         -- supabase_functions_admin
                         IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_functions_admin') THEN
