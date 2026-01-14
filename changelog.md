@@ -1,3 +1,10 @@
+## 1.0.36
+
+Added POSTGRES_PASSWORD environment variable to Studio deployment:
+  - Studio needs database password to pass to meta service for DB connections
+  - Fixes "password authentication failed for user supabase_admin" in meta service
+  - Password is sourced from secret.db.secretRef
+
 ## 1.0.35
 
 Added schema permissions for postgres user:
