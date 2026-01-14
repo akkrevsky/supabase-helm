@@ -26,6 +26,25 @@ data:
   99-roles.sql: |
     -- NOTE: change to your own passwords for production environments
     \set pgpass `echo "$POSTGRES_PASSWORD"`
+    \set pguser `echo "$POSTGRES_USER"`
+
+    -- Create or alter the main postgres user from POSTGRES_USER
+    -- Note: Standard PostgreSQL image creates this user automatically on first init,
+    -- but we ensure it exists and has the correct password for existing databases
+    CREATE OR REPLACE FUNCTION create_or_alter_user(username text, password text)
+    RETURNS void AS
+    $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = username) THEN
+        EXECUTE format('CREATE USER %I WITH PASSWORD %L SUPERUSER CREATEDB CREATEROLE', username, password);
+      ELSE
+        EXECUTE format('ALTER USER %I WITH PASSWORD %L', username, password);
+      END IF;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    SELECT create_or_alter_user(:'pguser', :'pgpass');
+    DROP FUNCTION create_or_alter_user(text, text);
 
     ALTER USER authenticator WITH PASSWORD :'pgpass';
     ALTER USER pgbouncer WITH PASSWORD :'pgpass';

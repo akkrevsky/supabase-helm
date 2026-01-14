@@ -53,6 +53,69 @@ spec:
               name: custom-migrations
             - mountPath: /initdb.d
               name: initdb-scripts-data
+        - name: ensure-postgres-user
+          image: "{{ .Values.db.image.repository }}:{{ .Values.db.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.secret.db.secretRef }}
+                  name: {{ .Values.secret.db.secretRef }}
+                  key: {{ .Values.secret.db.secretRefKey.username | default "username" }}
+                  {{- else }}
+                  name: {{ include "supabase.secret.db" . }}
+                  key: username
+                  {{- end }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.secret.db.secretRef }}
+                  name: {{ .Values.secret.db.secretRef }}
+                  key: {{ .Values.secret.db.secretRefKey.password | default "password" }}
+                  {{- else }}
+                  name: {{ include "supabase.secret.db" . }}
+                  key: password
+                  {{- end }}
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.secret.db.secretRef }}
+                  name: {{ .Values.secret.db.secretRef }}
+                  key: {{ .Values.secret.db.secretRefKey.database | default "database" }}
+                  {{- else }}
+                  name: {{ include "supabase.secret.db" . }}
+                  key: database
+                  {{- end }}
+            - name: DB_HOST
+              {{- if .Values.db.enabled }}
+              value: {{ include "supabase.db.fullname" . }}
+              {{- else }}
+              value: {{ .Values.db.environment.DB_HOST | default "localhost" | quote }}
+              {{- end }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "Waiting for database to be ready..."
+              until PGPASSWORD=$$POSTGRES_PASSWORD psql -h $$DB_HOST -U postgres -d $$POSTGRES_DB -c "SELECT 1" > /dev/null 2>&1; do
+                echo "Database is not ready yet, waiting..."
+                sleep 2
+              done
+              echo "Database is ready, ensuring user $$POSTGRES_USER exists..."
+              PGPASSWORD=$$POSTGRES_PASSWORD psql -h $$DB_HOST -U postgres -d $$POSTGRES_DB <<SQL
+              DO \$\$
+              BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '$$POSTGRES_USER') THEN
+                  EXECUTE format('CREATE USER %I WITH PASSWORD %L SUPERUSER CREATEDB CREATEROLE', '$$POSTGRES_USER', '$$POSTGRES_PASSWORD');
+                  RAISE NOTICE 'User $$POSTGRES_USER created';
+                ELSE
+                  EXECUTE format('ALTER USER %I WITH PASSWORD %L', '$$POSTGRES_USER', '$$POSTGRES_PASSWORD');
+                  RAISE NOTICE 'User $$POSTGRES_USER password updated';
+                END IF;
+              END
+              \$\$;
+              SQL
+              echo "User check completed"
       containers:
         - name: {{ include "supabase.db.name" $ }}
           securityContext:
