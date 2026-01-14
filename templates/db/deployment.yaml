@@ -139,14 +139,48 @@ spec:
                   - /bin/sh
                   - -c
                   - |
+                    set -e
+                    echo "=== Starting postStart hook for user creation ==="
+                    echo "POSTGRES_USER: ${POSTGRES_USER}"
+                    echo "POSTGRES_DB: ${POSTGRES_DB}"
                     sleep 10
+                    MAX_RETRIES=30
+                    RETRY=0
                     until psql -h /var/run/postgresql -U postgres -d "${POSTGRES_DB}" -c "SELECT 1" > /dev/null 2>&1; do
-                      echo "Waiting for database to be ready for user creation..."
+                      RETRY=$((RETRY+1))
+                      if [ $RETRY -ge $MAX_RETRIES ]; then
+                        echo "ERROR: Database did not become ready after $MAX_RETRIES attempts"
+                        exit 1
+                      fi
+                      echo "Waiting for database to be ready for user creation... (attempt $RETRY/$MAX_RETRIES)"
                       sleep 2
                     done
-                    echo "Ensuring user ${POSTGRES_USER} exists..."
-                    psql -h /var/run/postgresql -U postgres -d "${POSTGRES_DB}" -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${POSTGRES_USER}') THEN EXECUTE format('CREATE USER %I WITH PASSWORD %L SUPERUSER CREATEDB CREATEROLE', '${POSTGRES_USER}', '${POSTGRES_PASSWORD}'); RAISE NOTICE 'User ${POSTGRES_USER} created'; ELSE EXECUTE format('ALTER USER %I WITH PASSWORD %L', '${POSTGRES_USER}', '${POSTGRES_PASSWORD}'); RAISE NOTICE 'User ${POSTGRES_USER} password updated'; END IF; END \$\$;" || echo "Note: User creation may have failed, but continuing..."
-                    echo "User check completed"
+                    echo "Database is ready. Ensuring user ${POSTGRES_USER} exists..."
+                    psql -h /var/run/postgresql -U postgres -d "${POSTGRES_DB}" <<EOSQL
+                    DO \$\$
+                    DECLARE
+                      v_username TEXT := '${POSTGRES_USER}';
+                      v_password TEXT := '${POSTGRES_PASSWORD}';
+                    BEGIN
+                      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_username) THEN
+                        EXECUTE format('CREATE USER %I WITH PASSWORD %L SUPERUSER CREATEDB CREATEROLE', v_username, v_password);
+                        RAISE NOTICE 'User % created successfully', v_username;
+                      ELSE
+                        EXECUTE format('ALTER USER %I WITH PASSWORD %L', v_username, v_password);
+                        RAISE NOTICE 'User % password updated successfully', v_username;
+                      END IF;
+                    EXCEPTION
+                      WHEN OTHERS THEN
+                        RAISE EXCEPTION 'Failed to create/update user: %', SQLERRM;
+                    END
+                    \$\$;
+                    EOSQL
+                    if [ $? -eq 0 ]; then
+                      echo "=== User ${POSTGRES_USER} check completed successfully ==="
+                    else
+                      echo "ERROR: Failed to create/update user ${POSTGRES_USER}"
+                      exit 1
+                    fi
           ports:
             - name: http
               containerPort: 9999

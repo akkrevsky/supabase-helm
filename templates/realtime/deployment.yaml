@@ -50,16 +50,39 @@ spec:
                   name: {{ include "supabase.secret.db" . }}
                   key: username
                   {{- end }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.secret.db.secretRef }}
+                  name: {{ .Values.secret.db.secretRef }}
+                  key: {{ .Values.secret.db.secretRefKey.password | default "password" }}
+                  {{- else }}
+                  name: {{ include "supabase.secret.db" . }}
+                  key: password
+                  {{- end }}
             - name: DB_PORT
               value: {{ .Values.analytics.environment.DB_PORT | quote }}
           command: ["/bin/sh", "-c"]
           args:
             - |
-              until pg_isready -h $(DB_HOST) -p $(DB_PORT) -U $(DB_USER); do
-              echo "Waiting for database to start..."
-              sleep 2
+              echo "Waiting for database to be ready..."
+              until pg_isready -h $(DB_HOST) -p $(DB_PORT) -U postgres; do
+                echo "Database is not ready yet, waiting..."
+                sleep 2
               done
-            - echo "Database is ready"
+              echo "Database is ready. Waiting for user $(DB_USER) to be created..."
+              MAX_RETRIES=60
+              RETRY=0
+              until PGPASSWORD=$(DB_PASSWORD) psql -h $(DB_HOST) -p $(DB_PORT) -U $(DB_USER) -d postgres -c "SELECT 1" > /dev/null 2>&1; do
+                RETRY=$$((RETRY+1))
+                if [ $$RETRY -ge $$MAX_RETRIES ]; then
+                  echo "ERROR: User $(DB_USER) was not created after $$MAX_RETRIES attempts"
+                  exit 1
+                fi
+                echo "User $(DB_USER) not ready yet, waiting... (attempt $$RETRY/$$MAX_RETRIES)"
+                sleep 2
+              done
+              echo "User $(DB_USER) is ready. Database initialization complete."
       containers:
         - name: {{ include "supabase.realtime.name" $ }}
           securityContext:
