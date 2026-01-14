@@ -1,3 +1,12 @@
+## 1.0.10
+
+Improved postStart hook for database user creation:
+  - Fixed variable substitution in SQL command (removed heredoc, using direct psql -c)
+  - Removed SUPERUSER privilege requirement (using CREATEDB CREATEROLE instead)
+  - Added better error handling and logging
+  - Added validation of environment variables before execution
+Added init containers to realtime, meta, and analytics services to wait for database user creation before starting main containers
+
 ## 1.0.8
 
 Fixed GOTRUE_SMTP_PORT configuration error by replacing placeholder string "SMTP_PORT" with numeric value "587".
