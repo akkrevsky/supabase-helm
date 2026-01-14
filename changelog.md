@@ -1,3 +1,11 @@
+## 1.0.35
+
+Added schema permissions for postgres user:
+  - GRANT ALL ON SCHEMA _analytics TO postgres
+  - GRANT ALL ON SCHEMA _realtime TO postgres
+  - ALTER DEFAULT PRIVILEGES for tables and sequences in both schemas
+  - Fixes "no schema has been selected to create in" error for analytics and realtime
+
 ## 1.0.34
 
 Simplified chart - removed postStart hook and custom user creation:

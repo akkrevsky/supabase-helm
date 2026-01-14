@@ -16,9 +16,15 @@ data:
   99-logs.sql: |
     create schema if not exists _analytics;
     alter schema _analytics owner to supabase_admin;
+    GRANT ALL ON SCHEMA _analytics TO postgres;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA _analytics GRANT ALL ON TABLES TO postgres;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA _analytics GRANT ALL ON SEQUENCES TO postgres;
   99-realtime.sql: |
     create schema if not exists _realtime;
     alter schema _realtime owner to supabase_admin;
+    GRANT ALL ON SCHEMA _realtime TO postgres;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA _realtime GRANT ALL ON TABLES TO postgres;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA _realtime GRANT ALL ON SEQUENCES TO postgres;
   99-roles.sql: |
     -- NOTE: change to your own passwords for production environments
     \set pgpass `echo "$POSTGRES_PASSWORD"`
