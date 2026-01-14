@@ -157,7 +157,7 @@ spec:
                     # Use password auth explicitly (do NOT rely on peer auth as OS user "postgres",
                     # because DB role "postgres" may not exist on existing PVCs)
                     export PGPASSWORD="${POSTGRES_PASSWORD}"
-                    HOST="/var/run/postgresql"
+                    HOST="127.0.0.1"
 
                     echo "Waiting for database to accept connections as ${POSTGRES_USER}..."
                     MAX_RETRIES=60

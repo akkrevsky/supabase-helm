@@ -1,3 +1,14 @@
+## 1.0.28
+
+Simplified postStart hook with password authentication:
+  - Switched from peer auth to password auth via TCP (127.0.0.1)
+  - Connect as POSTGRES_USER directly (must already exist in DB)
+  - Removed complex fallback logic - if POSTGRES_USER can't connect, fail with clear error
+  - Clear error message if PVC has different roles/password than current secret
+  - Optionally creates 'postgres' role if it doesn't exist
+  - Simplified schema/privilege grants using POSTGRES_USER
+  - Added `set -eu` for better error handling
+
 ## 1.0.27
 
 Added POSTGRES_USER as connection fallback:
