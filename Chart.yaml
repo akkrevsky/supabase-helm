@@ -3,7 +3,8 @@ annotations:
   artifacthub.io/valuesSchema: "false"
   licenses: Apache-2.0
 apiVersion: v2
-description: The open source Firebase alternative. Patched version with db service fix.
+description: The open source Firebase alternative. Patched version with db service
+  fix.
 home: https://supabase.com/
 icon: https://avatars.githubusercontent.com/u/54469796?s=280&v=4
 maintainers:
@@ -11,4 +12,4 @@ maintainers:
   name: akkrevsky
 name: supabase
 type: application
-version: 1.0.36
+version: 1.0.37

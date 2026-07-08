@@ -92,6 +92,10 @@ spec:
             {{- toYaml .Values.storage.securityContext | nindent 12 }}
           image: "{{ .Values.storage.image.repository }}:{{ .Values.storage.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.storage.image.pullPolicy }}
+          {{- with .Values.storage.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           env:
             {{- range $key, $value := .Values.storage.environment }}
             - name: {{ $key }}
@@ -197,10 +201,6 @@ spec:
             - name: GLOBAL_S3_ENDPOINT
               value: http://{{ include "supabase.minio.fullname" . }}:{{ default 9000 .Values.minio.service.port }}
             {{- end }}
-          {{- with .Values.storage.envFrom }}
-          envFrom:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
           {{- with .Values.storage.livenessProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}

@@ -1,3 +1,11 @@
+## 1.0.37
+
+Fixed S3 storage configuration:
+  - Removed hardcoded GLOBAL_S3_BUCKET, TENANT_ID, REGION from default values
+  - These should now be provided via envFrom secret or explicit environment override
+  - Moved envFrom before env in storage deployment template
+  - Allows S3 bucket configuration from external secrets (Vault)
+
 ## 1.0.36
 
 Added POSTGRES_PASSWORD environment variable to Studio deployment:
