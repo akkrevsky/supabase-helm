@@ -816,6 +816,11 @@ kong:
         - name: basic-auth
           config:
             hide_credentials: true
+  # MCP server route (/mcp -> Studio /api/mcp). OFF by default.
+  # Studio MCP has NO built-in OAuth — when enabled, expose only via port-forward /
+  # internal ingress and front it with auth (e.g. oauth2-proxy + Keycloak RBAC).
+  mcp:
+    enabled: false
   imagePullSecrets: []
   replicaCount: 1
   nameOverride: ""

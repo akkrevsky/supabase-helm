@@ -1,3 +1,12 @@
+## 1.0.38
+
+Add optional MCP server route (off by default):
+  - New `kong.mcp.enabled` value (default false) gates a Kong route
+    `/mcp -> http://<studio>:3000/api/mcp` (native Supabase MCP lives in Studio)
+  - Route ships with `cors` only; Studio MCP has no built-in OAuth, so when enabled
+    it must be kept internal (port-forward / internal ingress) or fronted with auth
+    (e.g. oauth2-proxy + Keycloak RBAC) per instance
+
 ## 1.0.37
 
 Fixed S3 storage configuration:
