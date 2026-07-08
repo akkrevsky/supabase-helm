@@ -288,6 +288,20 @@ studio:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  # Persistent volume for Studio SQL snippets (SNIPPETS_MANAGEMENT_FOLDER).
+  # When enabled, chart creates the PVC and mounts it into Studio automatically.
+  snippetsPersistence:
+    enabled: false
+    mountPath: /tmp/snippets
+    # Optional: also mount EDGE_FUNCTIONS_MANAGEMENT_FOLDER on the SAME PVC
+    # (in a "functions/" subdir via subPath). Set to the functions mount path
+    # (e.g. /tmp/functions) to enable; empty disables.
+    functionsMountPath: ""
+    annotations: {}
+    storageClassName: ""
+    accessModes:
+      - ReadWriteOnce
+    size: 5Gi
 
 # Auth Service
 auth:

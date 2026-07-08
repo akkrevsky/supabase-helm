@@ -1,3 +1,12 @@
+## 1.0.39
+
+Add optional Studio persistence for SQL snippets and Edge Functions (off by default):
+  - New `studio.snippetsPersistence` value (mirrors `db.persistence`) gates a PVC
+    `<release>-supabase-studio-snippets-pvc`; SNIPPETS_MANAGEMENT_FOLDER is mounted at the PVC root
+  - Optional `functionsMountPath` mounts EDGE_FUNCTIONS_MANAGEMENT_FOLDER on the SAME PVC
+    (in a "functions/" subdir via subPath) — snippets + functions share one volume
+  - PVC name kept stable so an existing snippets PVC is adopted without data migration
+
 ## 1.0.38
 
 Add optional MCP server route (off by default):

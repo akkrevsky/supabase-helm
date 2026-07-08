@@ -109,13 +109,31 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.studio.volumeMounts }}
+          {{- if or .Values.studio.volumeMounts .Values.studio.snippetsPersistence.enabled }}
           volumeMounts:
+            {{- with .Values.studio.volumeMounts }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- if .Values.studio.snippetsPersistence.enabled }}
+            - name: snippets
+              mountPath: {{ .Values.studio.snippetsPersistence.mountPath | default "/tmp/snippets" }}
+            {{- if .Values.studio.snippetsPersistence.functionsMountPath }}
+            - name: snippets
+              mountPath: {{ .Values.studio.snippetsPersistence.functionsMountPath }}
+              subPath: functions
+            {{- end }}
+            {{- end }}
           {{- end }}
-      {{- with .Values.studio.volumes }}
+      {{- if or .Values.studio.volumes .Values.studio.snippetsPersistence.enabled }}
       volumes:
+        {{- with .Values.studio.volumes }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if .Values.studio.snippetsPersistence.enabled }}
+        - name: snippets
+          persistentVolumeClaim:
+            claimName: {{ include "supabase.studio.fullname" . }}-snippets-pvc
+        {{- end }}
       {{- end }}
       {{- with .Values.studio.nodeSelector }}
       nodeSelector:

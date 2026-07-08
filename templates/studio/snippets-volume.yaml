@@ -1,0 +1,26 @@
+{{- if .Values.studio.enabled -}}
+{{- if .Values.studio.snippetsPersistence.enabled -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  namespace: {{  .Release.Namespace }}
+  name: {{ include "supabase.studio.fullname" . }}-snippets-pvc
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+  {{- with .Values.studio.snippetsPersistence.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.studio.snippetsPersistence.storageClassName }}
+  storageClassName: {{ .Values.studio.snippetsPersistence.storageClassName }}
+  {{- end }}
+  accessModes:
+  {{- range .Values.studio.snippetsPersistence.accessModes }}
+    - {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.studio.snippetsPersistence.size | quote }}
+{{- end }}
+{{- end }}
