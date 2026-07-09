@@ -1,3 +1,15 @@
+## 1.0.40
+
+Add optional `mcpo` component (MCP→HTTP bridge, off by default):
+  - New `mcpo:` value section gates a Deployment + Service + ConfigMap + Ingress running
+    `ghcr.io/open-webui/mcpo`, which bridges stdio MCP servers to HTTP
+  - `mcpo.roles` renders one `mcp-server-postgrest` entry per postgres role in the mcpo
+    config, pointing at this release's own PostgREST; the role-JWT (apiKey) is injected
+    via the `${MCPO_KEY_<ROLE>}` env var from a Secret (JWTs stay out of the ConfigMap)
+  - Intended for AI agents (e.g. a central agent) to read per-role-scoped data through
+    PostgREST + GRANT. Requires matching postgres roles + GRANTs (applied separately)
+  - Optional `apiAuth` enables mcpo-level `--api-key` auth; optional ingress exposes it
+
 ## 1.0.39
 
 Add optional Studio persistence for SQL snippets and Edge Functions (off by default):

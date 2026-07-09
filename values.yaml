@@ -1238,3 +1238,41 @@ pgbouncer:
   defaultPoolSize: "20"
   resources: {}
 
+# mcpo — MCP→HTTP bridge (exposes per-role mcp-server-postgrest for AI agents).
+# OFF by default. Each role spawns a stdio mcp-server-postgrest pointing at this
+# release's own PostgREST; the role-JWT (apiKey) is read from a Secret via env var
+# ${MCPO_KEY_<ROLE>} (resolved by mcpo), so JWTs never land in the ConfigMap.
+mcpo:
+  enabled: false
+  nameOverride: ""
+  fullnameOverride: ""
+  image:
+    repository: ghcr.io/open-webui/mcpo
+    pullPolicy: IfNotPresent
+    tag: main
+  replicaCount: 1
+  service:
+    port: 8000
+  # mcpo-level API key — authenticates who may call mcpo. Sourced from a Secret.
+  apiAuth:
+    secretRef: ""
+    secretKey: ""
+  ingress:
+    enabled: false
+    className: ""
+    host: ""
+    annotations: {}
+    tls: []
+  # One entry per postgres role.
+  #   name      = MCP server name + env-var base (uppercased → MCPO_KEY_<NAME>)
+  #   schema    = PostgREST schema to expose
+  #   keySecret = Secret holding the role-JWT for that role
+  roles: []
+  #  - name: reader_call_center
+  #    schema: call_center
+  #    keySecret: { name: supabase-test-mcp-keys, key: reader_call_center }
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+

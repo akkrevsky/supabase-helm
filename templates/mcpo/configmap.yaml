@@ -1,0 +1,22 @@
+{{- if .Values.mcpo.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: {{  .Release.Namespace }}
+  name: {{ include "supabase.mcpo.fullname" . }}
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+data:
+  # mcpo bridges the listed stdio MCP servers to HTTP.
+  # One mcp-server-postgrest entry per role; apiKey is the role-JWT, injected via
+  # the ${MCPO_KEY_<ROLE>} env var (resolved from a Secret on the Deployment), so
+  # JWTs never land in this ConfigMap. apiUrl points at this release's own PostgREST.
+  config.json: |
+    {{- $servers := dict -}}
+    {{- range $role := .Values.mcpo.roles -}}
+    {{- $apiUrl := printf "http://%s:%v/" (include "supabase.rest.fullname" $) $.Values.rest.service.port -}}
+    {{- $args := list "-y" "@supabase/mcp-server-postgrest" "--apiUrl" $apiUrl "--schema" $role.schema "--apiKey" (printf "${MCPO_KEY_%s}" ($role.name | upper)) -}}
+    {{- $_ := set $servers $role.name (dict "command" "npx" "args" $args) -}}
+    {{- end -}}
+    {{ toJson (dict "mcpServers" $servers) | nindent 4 }}
+{{- end }}

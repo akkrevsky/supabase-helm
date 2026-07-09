@@ -1,0 +1,77 @@
+{{- if .Values.mcpo.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: {{  .Release.Namespace }}
+  name: {{ include "supabase.mcpo.fullname" . }}
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.mcpo.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "supabase.mcpo.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "supabase.mcpo.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: {{ include "supabase.mcpo.name" . }}
+          image: "{{ .Values.mcpo.image.repository }}:{{ .Values.mcpo.image.tag }}"
+          imagePullPolicy: {{ .Values.mcpo.image.pullPolicy }}
+          args:
+            - --config
+            - /opt/mcpo/config.json
+            - --port
+            - {{ .Values.mcpo.service.port | quote }}
+            {{- if .Values.mcpo.apiAuth.secretRef }}
+            - --api-key
+            - $(MCPO_API_KEY)
+            {{- end }}
+          env:
+            {{- if .Values.mcpo.apiAuth.secretRef }}
+            - name: MCPO_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mcpo.apiAuth.secretRef }}
+                  key: {{ .Values.mcpo.apiAuth.secretKey }}
+            {{- end }}
+            {{- range $role := .Values.mcpo.roles }}
+            - name: MCPO_KEY_{{ $role.name | upper }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $role.keySecret.name }}
+                  key: {{ $role.keySecret.key }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.mcpo.service.port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          volumeMounts:
+            - name: config
+              mountPath: /opt/mcpo
+              readOnly: true
+          {{- with .Values.mcpo.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "supabase.mcpo.fullname" . }}
+      {{- with .Values.mcpo.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.mcpo.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

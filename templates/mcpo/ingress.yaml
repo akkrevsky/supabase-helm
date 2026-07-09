@@ -1,0 +1,32 @@
+{{- if and .Values.mcpo.enabled .Values.mcpo.ingress.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  namespace: {{  .Release.Namespace }}
+  name: {{ include "supabase.mcpo.fullname" . }}
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+  {{- with .Values.mcpo.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.mcpo.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.mcpo.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ required "mcpo.ingress.host is required when mcpo.ingress.enabled" .Values.mcpo.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "supabase.mcpo.fullname" . }}
+                port:
+                  number: {{ .Values.mcpo.service.port }}
+{{- end }}
