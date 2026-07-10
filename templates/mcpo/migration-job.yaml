@@ -1,0 +1,62 @@
+{{- if .Values.mcpo.enabled -}}
+{{- if .Values.mcpo.roles -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: {{ include "supabase.mcpo.fullname" . }}-migrate
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: OnFailure
+      {{- with .Values.mcpo.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.mcpo.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: "supabase/postgres:{{ .Values.db.image.tag }}"
+          env:
+            - name: PGHOST
+              value: {{ include "supabase.db.fullname" . | quote }}
+            - name: PGPORT
+              value: "5432"
+            - name: PGDATABASE
+              value: postgres
+            {{- if .Values.secret.db.secretRef }}
+            - name: PGUSER
+              value: supabase_admin   # the Supabase superuser; POSTGRES_USER (postgres) is NOT superuser
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secret.db.secretRef }}
+                  key: {{ .Values.secret.db.secretRefKey.password | default "password" }}
+            {{- end }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              echo "Applying MCP role GRANTs..."
+              psql -v ON_ERROR_STOP=1 <<'SQL'
+              {{- range $role := .Values.mcpo.roles }}
+              -- role: {{ $role.name }} (schema: {{ $role.schema }}, access: {{ $role.access | default "read" }})
+              SELECT 'CREATE ROLE {{ $role.name }} NOLOGIN' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{{ $role.name }}')\gexec
+              GRANT USAGE ON SCHEMA {{ $role.schema }} TO {{ $role.name }};
+              GRANT {{ if eq ($role.access | default "read") "write" }}ALL{{ else }}SELECT{{ end }} ON ALL TABLES IN SCHEMA {{ $role.schema }} TO {{ $role.name }};
+              GRANT {{ $role.name }} TO authenticator;
+              {{- end }}
+              SQL
+              echo "MCP role GRANTs applied."
+{{- end }}
+{{- end }}

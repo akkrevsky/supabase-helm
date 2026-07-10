@@ -1,0 +1,18 @@
+{{- if and .Values.mcpo.enabled .Values.mcpo.authProxy.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: {{  .Release.Namespace }}
+  name: {{ include "supabase.mcpo-auth-proxy.fullname" . }}
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "supabase.mcpo-auth-proxy.selectorLabels" . | nindent 4 }}
+{{- end }}

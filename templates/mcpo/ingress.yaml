@@ -26,7 +26,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ include "supabase.mcpo.fullname" . }}
+                name: {{ if .Values.mcpo.authProxy.enabled }}{{ include "supabase.mcpo-auth-proxy.fullname" . }}{{ else }}{{ include "supabase.mcpo.fullname" . }}{{ end }}
                 port:
-                  number: {{ .Values.mcpo.service.port }}
+                  number: {{ if .Values.mcpo.authProxy.enabled }}8080{{ else }}{{ .Values.mcpo.service.port }}{{ end }}
 {{- end }}

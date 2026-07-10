@@ -1,0 +1,46 @@
+{{- if and .Values.mcpo.enabled .Values.mcpo.authProxy.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: {{  .Release.Namespace }}
+  name: {{ include "supabase.mcpo-auth-proxy.fullname" . }}
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+data:
+  # Validates the client's Bearer role-JWT (HS256, JWT_SECRET), enforces that the JWT
+  # `role` claim matches the /<role>/ in the URL, then forwards to mcpo with mcpo's
+  # internal API key (the client never sees it). Gives per-role Bearer enforcement.
+  proxy.js: |
+    const http = require("http");
+    const crypto = require("crypto");
+    const SECRET = process.env.JWT_SECRET;
+    const MCPO_URL = process.env.MCPO_URL;
+    const MCPO_KEY = process.env.MCPO_INTERNAL_KEY;
+    const PORT = parseInt(process.env.PORT || "8080", 10);
+    if (!SECRET || !MCPO_KEY || !MCPO_URL) { console.error("JWT_SECRET, MCPO_INTERNAL_KEY, MCPO_URL required"); process.exit(1); }
+    function b64urlDec(s){ s = s.replace(/-/g,"+").replace(/_/g,"/"); while (s.length % 4) s += "="; return Buffer.from(s, "base64"); }
+    function verifyRole(token){
+      const p = token.split("."); if (p.length !== 3) throw new Error("malformed jwt");
+      const exp = crypto.createHmac("sha256", SECRET).update(p[0] + "." + p[1]).digest().toString("base64").replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_");
+      if (exp !== p[2]) throw new Error("bad signature");
+      const pl = JSON.parse(b64urlDec(p[1]).toString());
+      if (pl.exp && Date.now()/1000 > pl.exp) throw new Error("expired");
+      if (!pl.role) throw new Error("no role claim");
+      return pl.role;
+    }
+    function deny(res, code, msg){ res.writeHead(code, {"content-type":"application/json"}); res.end(JSON.stringify({error: msg})); }
+    const u = new URL(MCPO_URL);
+    http.createServer((crq, cres) => {
+      if (crq.url === "/health") { cres.writeHead(200); return cres.end("ok"); }
+      try {
+        const m = (crq.headers.authorization || "").match(/^Bearer\s+(.+)$/i);
+        if (!m) return deny(cres, 401, "missing bearer");
+        let role; try { role = verifyRole(m[1]); } catch (e) { return deny(cres, 401, "invalid jwt: " + e.message); }
+        const urlRole = (crq.url.split("?")[0]).split("/").filter(Boolean)[0];
+        if (!urlRole || urlRole !== role) return deny(cres, 403, "role mismatch: jwt='" + role + "' url='" + (urlRole || "-") + "'");
+        const pr = http.request({ hostname: u.hostname, port: u.port, path: crq.url, method: crq.method, headers: { ...crq.headers, host: u.host, authorization: "Bearer " + MCPO_KEY } }, mr => { cres.writeHead(mr.statusCode, mr.headers); mr.pipe(cres); });
+        pr.on("error", e => deny(cres, 502, "upstream: " + e.message));
+        crq.pipe(pr);
+      } catch (e) { deny(cres, 500, "proxy: " + e.message); }
+    }).listen(PORT, () => console.log("mcpo auth-proxy on :" + PORT + " -> " + MCPO_URL));
+{{- end }}

@@ -1,4 +1,22 @@
-## 1.0.41
+## 1.0.43
+
+Add optional `mcpo.authProxy` (off by default) — a per-role auth proxy in front of mcpo:
+  - Clients send `Authorization: Bearer <role-JWT>` (HS256, instance JWT_SECRET, `role` claim)
+  - Proxy validates the JWT and enforces `JWT.role == the /<role>/ in the URL`, then forwards
+    to mcpo with mcpo's INTERNAL apiAuth key (clients never see it)
+  - Gives per-role Bearer enforcement (mcpo's own --api-key is global/shared)
+  - When enabled, the mcpo ingress targets the proxy instead of mcpo directly
+  - Same role-JWT mechanism scales to per-user later (Keycloak JWT instead of role-JWT)
+
+## 1.0.42
+
+GitOps-ify mcpo roles — adding a role is now values-only (no kubectl):
+  - Self-minting: mcpo mints each role-JWT at startup from the instance JWT_SECRET
+    (mint.py in the ConfigMap); per-role keySecrets are no longer used
+  - Migration Job (helm post-install/upgrade hook) creates each role + GRANT
+    (SELECT for access:read, ALL for access:write) + GRANT TO authenticator from
+    mcpo.roles — applied automatically, no manual psql
+  - mcpo.roles entries are now {name, schema, access: read|write}
 
 Fix mcpo component:
   - Substitute `${MCPO_KEY_<ROLE>}` env vars into config.json at container startup

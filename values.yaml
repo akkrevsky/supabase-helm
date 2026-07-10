@@ -1254,23 +1254,36 @@ mcpo:
   service:
     port: 8000
   # mcpo-level API key — authenticates who may call mcpo. Sourced from a Secret.
+  # When authProxy is enabled this becomes INTERNAL (the proxy injects it); clients
+  # instead present a per-role JWT Bearer, validated by the proxy.
   apiAuth:
     secretRef: ""
     secretKey: ""
+  # Per-role auth proxy in front of mcpo. When enabled, the mcpo ingress targets the
+  # proxy (not mcpo directly). Clients send a Bearer role-JWT (HS256, JWT_SECRET, role
+  # claim); the proxy enforces JWT.role == the /<role>/ in the URL, then forwards to mcpo
+  # with the internal apiAuth key. Gives per-role Bearer enforcement.
+  authProxy:
+    enabled: false
+    nameOverride: ""
+    fullnameOverride: ""
+    resources: {}
   ingress:
     enabled: false
     className: ""
     host: ""
     annotations: {}
     tls: []
-  # One entry per postgres role.
-  #   name      = MCP server name + env-var base (uppercased → MCPO_KEY_<NAME>)
-  #   schema    = PostgREST schema to expose
-  #   keySecret = Secret holding the role-JWT for that role
+  # One entry per postgres role. mcpo mints the role-JWT itself (from the instance
+  # JWT_SECRET) and the post-install/upgrade migration Job creates the role + GRANTs
+  # in Postgres — no per-role Secret needed.
+  #   name   = postgres role + MCP server name (must match the GRANT target)
+  #   schema = PostgREST schema to expose
+  #   access = "read" (SELECT only) or "write" (SELECT/INSERT/UPDATE/DELETE)
   roles: []
   #  - name: reader_call_center
   #    schema: call_center
-  #    keySecret: { name: supabase-test-mcp-keys, key: reader_call_center }
+  #    access: read
   resources: {}
   nodeSelector: {}
   tolerations: []

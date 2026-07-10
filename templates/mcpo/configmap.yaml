@@ -8,9 +8,10 @@ metadata:
     {{- include "supabase.labels" . | nindent 4 }}
 data:
   # mcpo bridges the listed stdio MCP servers to HTTP.
-  # One mcp-server-postgrest entry per role; apiKey is the role-JWT, injected via
-  # the ${MCPO_KEY_<ROLE>} env var (resolved from a Secret on the Deployment), so
-  # JWTs never land in this ConfigMap. apiUrl points at this release's own PostgREST.
+  # One mcp-server-postgrest entry per role; the apiKey placeholder ${MCPO_KEY_<ROLE>}
+  # is resolved by mint.py at startup (JWT signed with the instance JWT_SECRET, role claim
+  # = the role name), so JWTs never land in this ConfigMap and no per-role Secret is needed.
+  # apiUrl points at this release's own PostgREST.
   config.json: |
     {{- $servers := dict -}}
     {{- range $role := .Values.mcpo.roles -}}
@@ -19,4 +20,19 @@ data:
     {{- $_ := set $servers $role.name (dict "command" "npx" "args" $args) -}}
     {{- end -}}
     {{ toJson (dict "mcpServers" $servers) | nindent 4 }}
+  # mint.py: reads config.json, replaces each ${MCPO_KEY_<ROLE>} with a freshly minted
+  # HS256 JWT (role=<role>, exp +90d) signed with $JWT_SECRET, writes /tmp/config.json.
+  mint.py: |
+    import os,re,hmac,hashlib,base64,json,time
+    SECRET=os.environ["JWT_SECRET"].encode()
+    def b64(x): return base64.urlsafe_b64encode(x).rstrip(b"=").decode()
+    def mint(role):
+        n=int(time.time())
+        h=b64(json.dumps({"alg":"HS256","typ":"JWT"}).encode())
+        p=b64(json.dumps({"role":role,"iss":"supabase-mcp","iat":n,"exp":n+7776000}).encode())
+        return h+"."+p+"."+b64(hmac.new(SECRET,(h+"."+p).encode(),hashlib.sha256).digest())
+    tmpl=open("/opt/mcpo/config.json").read()
+    out=re.sub(r"\$\{(MCPO_KEY_\w+)\}", lambda m: mint(m.group(1).replace("MCPO_KEY_","").lower()), tmpl)
+    open("/tmp/config.json","w").write(out)
+    print("mint.py: wrote /tmp/config.json")
 {{- end }}
