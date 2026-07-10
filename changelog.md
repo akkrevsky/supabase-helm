@@ -1,4 +1,9 @@
-## 1.0.40
+## 1.0.41
+
+Fix mcpo component:
+  - Substitute `${MCPO_KEY_<ROLE>}` env vars into config.json at container startup
+    (mcpo does not expand them itself; was sending the literal `${...}` as the apiKey)
+  - Liveness probe: `/` returned 404 → switch to `/docs` (200)
 
 Add optional `mcpo` component (MCP→HTTP bridge, off by default):
   - New `mcpo:` value section gates a Deployment + Service + ConfigMap + Ingress running

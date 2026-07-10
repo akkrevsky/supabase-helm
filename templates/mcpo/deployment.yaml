@@ -20,15 +20,13 @@ spec:
         - name: {{ include "supabase.mcpo.name" . }}
           image: "{{ .Values.mcpo.image.repository }}:{{ .Values.mcpo.image.tag }}"
           imagePullPolicy: {{ .Values.mcpo.image.pullPolicy }}
-          args:
-            - --config
-            - /opt/mcpo/config.json
-            - --port
-            - {{ .Values.mcpo.service.port | quote }}
-            {{- if .Values.mcpo.apiAuth.secretRef }}
-            - --api-key
-            - $(MCPO_API_KEY)
-            {{- end }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              # mcpo does not expand ${VAR} in config.json — substitute role-JWTs from env at startup
+              python3 -c 'import os,re; t=open("/opt/mcpo/config.json").read(); open("/tmp/config.json","w").write(re.sub(r"\$\{(\w+)\}", lambda m: os.environ.get(m.group(1), m.group(0)), t))'
+              exec mcpo --config /tmp/config.json --port {{ .Values.mcpo.service.port }}{{ if .Values.mcpo.apiAuth.secretRef }} --api-key $(MCPO_API_KEY){{ end }}
           env:
             {{- if .Values.mcpo.apiAuth.secretRef }}
             - name: MCPO_API_KEY
@@ -50,7 +48,7 @@ spec:
               protocol: TCP
           livenessProbe:
             httpGet:
-              path: /
+              path: /docs
               port: http
             initialDelaySeconds: 10
             periodSeconds: 30
